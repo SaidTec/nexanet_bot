@@ -1,34 +1,26 @@
-"""
-Utility functions for NEXA NET VPN Bot
-"""
+# utils_simple.py - Simplified version using pycryptodome
 import logging
 import os
 import hashlib
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+from Crypto.Random import get_random_bytes
 import base64
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 logger = logging.getLogger(__name__)
 
 class ConfigEncryptor:
-    """Handle AES encryption/decryption for config files"""
+    """Handle AES encryption/decryption for config files using pycryptodome"""
     
     def __init__(self, password: str = "nexanet-secure-key-2024"):
         """Initialize encryptor with password-derived key"""
-        # Derive key from password
+        # Derive key from password using PBKDF2
         salt = b'nexanet_salt_123'
-        kdf = PBKDF2(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-        )
-        key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-        self.cipher = Fernet(key)
+        key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000, 32)
+        self.key = key
     
     def encrypt_file(self, input_path: str, output_path: str):
         """Encrypt file and save to output path"""
@@ -36,7 +28,13 @@ class ConfigEncryptor:
             with open(input_path, 'rb') as f:
                 data = f.read()
             
-            encrypted_data = self.cipher.encrypt(data)
+            # Generate random IV
+            iv = get_random_bytes(AES.block_size)
+            cipher = AES.new(self.key, AES.MODE_CBC, iv)
+            
+            # Pad data and encrypt
+            padded_data = pad(data, AES.block_size)
+            encrypted_data = iv + cipher.encrypt(padded_data)
             
             with open(output_path, 'wb') as f:
                 f.write(encrypted_data)
@@ -52,7 +50,13 @@ class ConfigEncryptor:
             with open(input_path, 'rb') as f:
                 encrypted_data = f.read()
             
-            decrypted_data = self.cipher.decrypt(encrypted_data)
+            # Extract IV and ciphertext
+            iv = encrypted_data[:AES.block_size]
+            ciphertext = encrypted_data[AES.block_size:]
+            
+            cipher = AES.new(self.key, AES.MODE_CBC, iv)
+            decrypted_padded = cipher.decrypt(ciphertext)
+            decrypted_data = unpad(decrypted_padded, AES.block_size)
             
             with open(output_path, 'wb') as f:
                 f.write(decrypted_data)
@@ -61,6 +65,8 @@ class ConfigEncryptor:
         except Exception as e:
             logger.error(f"Error decrypting file: {e}")
             return False
+
+# Rest of the utils functions remain the same...
     
     def encrypt_data(self, data: bytes) -> bytes:
         """Encrypt bytes data"""
