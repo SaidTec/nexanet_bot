@@ -1,0 +1,5 @@
+python-telegram-bot==20.7
+cryptography==42.0.7
+schedule==1.2.1
+python-dateutil==2.9.0.post0
+pillow==10.3.0  # For image processing
