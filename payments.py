@@ -422,9 +422,9 @@ class PaymentManager:
                     "• Unclear screenshot\n"
                     "• Incorrect amount\n"
                     "• Invalid transaction\n\n"
-                    "Please submit a new payment with clear proof.",
-                    reply_markup=self._get_back_to_menu_keyboard()
-                )
+                    "Please submit a new payment with clear proof."
+                ),
+                reply_markup=self._get_back_to_menu_keyboard()
             )
         except Exception as e:
             logger.error(f"Error notifying user rejection: {e}")
