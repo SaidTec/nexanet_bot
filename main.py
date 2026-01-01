@@ -1,3 +1,8 @@
+cd ~/nexanet_bot
+
+# Replace your main.py with the fixed version
+# Method 1: Create new file
+cat > main.py << 'EOF'
 """
 Main module for NEXA NET VPN Bot
 Entry point and core bot setup
@@ -42,7 +47,7 @@ config_manager = ConfigManager(db)
 payment_manager = PaymentManager(db)
 
 # Bot token (to be set by user)
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"  # Replace with actual token
+BOT_TOKEN = "8443859419:AAGaZ4Nah52TurLvQ2NdINrxhbSiwXQKEi4"  # Your actual token
 
 def run_scheduled_tasks():
     """Run scheduled tasks in background thread"""
@@ -77,6 +82,41 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command"""
     await user_manager.show_welcome(update, context)
 
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /admin command"""
+    user_id = update.effective_user.id
+    
+    # Check if user is admin
+    if admin_manager.is_admin(user_id):
+        # Create admin keyboard
+        from utils import create_admin_keyboard
+        keyboard = create_admin_keyboard()
+        
+        # Send message with inline keyboard
+        await update.message.reply_text(
+            "🛠️ **ADMIN PANEL**\n\nSelect an option:",
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
+    else:
+        await update.message.reply_text("❌ Unauthorized.")
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /status command"""
+    await user_manager.show_user_status(update, context)
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /cancel command"""
+    # Clear any pending states
+    for key in ['awaiting_payment', 'awaiting_config', 'awaiting_broadcast', 'awaiting_expire_user']:
+        context.user_data.pop(key, None)
+    
+    from utils import create_back_button
+    await update.message.reply_text(
+        "Operation cancelled.",
+        reply_markup=create_back_button("menu")
+    )
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle all messages"""
     # Check if admin is expecting broadcast
@@ -104,18 +144,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Handle other messages
-    if update.message.text:
+    if update.message and update.message.text:
+        from utils import create_back_button
         await update.message.reply_text(
             "Please use the menu buttons to navigate.",
-            reply_markup=user_manager._get_back_to_menu_keyboard()
+            reply_markup=create_back_button("menu")
         )
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle all callback queries"""
     query = update.callback_query
-    data = query.data
+    
+    # Check if query exists
+    if not query:
+        logger.error("No query object in callback")
+        return
     
     try:
+        await query.answer()  # Always answer callback query first
+        data = query.data
+        
+        if not data:
+            logger.error("No data in callback query")
+            return
+        
         # Main menu
         if data == "menu":
             await user_manager.show_menu(update, context)
@@ -140,8 +192,13 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             config_id = int(data.replace("download_", ""))
             await config_manager.download_config(update, context, config_id)
         elif data.startswith("configs_page_"):
-            # Handle pagination - currently handled in config_manager.list_configs
-            pass
+            # Handle pagination - get category from context or parse
+            page = int(data.replace("configs_page_", ""))
+            # Store page in context and reload
+            context.user_data['configs_page'] = page
+            # Need category from context
+            category = context.user_data.get('last_category', 'Safaricom')
+            await config_manager.list_configs(update, context, category)
         
         # Admin functions
         elif data == "admin":
@@ -171,8 +228,6 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await payment_manager.reject_payment(update, context, payment_id)
         elif data == "admin_upload":
             # Show category selection for upload
-            query = update.callback_query
-            await query.answer()
             if admin_manager.is_admin(update.effective_user.id):
                 await query.edit_message_text(
                     "📁 Select config category:",
@@ -192,8 +247,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         
         # Unknown callback
         else:
-            await query.answer("Unknown command")
             logger.warning(f"Unknown callback data: {data}")
+            await query.answer("Unknown command")
     
     except Exception as e:
         logger.error(f"Error handling callback: {e}")
@@ -201,28 +256,6 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await query.answer("❌ An error occurred. Please try again.")
         except:
             pass
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /cancel command"""
-    # Clear any pending states
-    for key in ['awaiting_payment', 'awaiting_config', 'awaiting_broadcast', 'awaiting_expire_user']:
-        context.user_data.pop(key, None)
-    
-    await update.message.reply_text(
-        "Operation cancelled.",
-        reply_markup=user_manager._get_back_to_menu_keyboard()
-    )
-
-async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /admin command"""
-    if admin_manager.is_admin(update.effective_user.id):
-        await admin_manager.show_admin_panel(update, context)
-    else:
-        await update.message.reply_text("❌ Unauthorized.")
-
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /status command"""
-    await user_manager.show_user_status(update, context)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors"""
@@ -304,3 +337,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Fatal error: {e}")
         sys.exit(1)
+EOF
